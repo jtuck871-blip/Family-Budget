@@ -70,7 +70,16 @@ export default function BudgetSettings() {
 
   const saveBudget = async () => {
     setSaving(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({ title: "Error", description: "You must be logged in", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
+
     const data = {
+      user_id: user.id,
       month: monthKey,
       income: parseFloat(income) || 0,
       needs_target_pct: parseInt(needsPct) || 50,
@@ -78,24 +87,38 @@ export default function BudgetSettings() {
       savings_target_pct: parseInt(savingsPct) || 20,
     };
 
-    if (budget) {
-      await supabase.from("monthly_budgets").update(data).eq("id", budget.id);
-    } else {
-      await supabase.from("monthly_budgets").insert([data]);
-    }
+    try {
+      if (budget?.id) {
+        await supabase.from("monthly_budgets").update(data).eq("id", budget.id);
+      } else {
+        await supabase.from("monthly_budgets").insert([data]);
+      }
 
-    toast({ title: "Budget saved!" });
-    setSaving(false);
-    loadData();
+      toast({ title: "Budget saved!" });
+      loadData();
+    } catch (error) {
+      toast({ 
+        title: "Error saving budget", 
+        description: error.message, 
+        variant: "destructive" 
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addCategory = async () => {
     if (!newCatName || !newCatBudget) return;
 
-    const preset = PRESET_CATEGORIES.find((p) => p.name === newCatName);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     setSaving(true);
 
+    const preset = PRESET_CATEGORIES.find((p) => p.name === newCatName);
+
     await supabase.from("budget_categories").insert([{
+      user_id: user.id,
       name: newCatName,
       budget_amount: parseFloat(newCatBudget),
       type: preset?.type || newCatType,
@@ -124,11 +147,18 @@ export default function BudgetSettings() {
 
   const handleQuickSetup = async () => {
     setSaving(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setSaving(false);
+      return;
+    }
+
     const incomeVal = parseFloat(income) || 3000;
 
-    // Create or update monthly budget
     if (!budget) {
       await supabase.from("monthly_budgets").insert([{
+        user_id: user.id,
         month: monthKey,
         income: incomeVal,
         needs_target_pct: 50,
@@ -151,6 +181,7 @@ export default function BudgetSettings() {
     const toCreate = PRESET_CATEGORIES
       .filter((p) => defaultBudgets[p.name])
       .map((p) => ({
+        user_id: user.id,
         name: p.name,
         icon: p.icon,
         color: p.color,
